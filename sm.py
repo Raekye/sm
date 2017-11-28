@@ -56,6 +56,17 @@ def data_slice(d, t, ms):
 	return d[t0:t1]
 
 '''
+Returns iterator of 20ms slices of the data.
+- d: numpy array
+'''
+def data_iter_20ms(d):
+	L = 882 # WAV_RATE * 20ms
+	for i in range(len(d) - L):
+		x = d[i:i + L]
+		assert(len(x) == L)
+		yield x
+
+'''
 - a: amplitude
 - ms: duration in milliseconds
 - f: directory name
@@ -110,6 +121,8 @@ def main(args):
 		print(data_slice(d, 999, 2))
 		d = wav_read('wavs/pitch-single-48-a.wav')
 		print(d)
+		print(len(d))
+		print(len(list(data_iter_20ms(d))))
 	else:
 		help_show()
 
