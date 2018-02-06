@@ -86,18 +86,19 @@ def createCNNModel(num_classes=88):
     model = Sequential()
     
     model.add(Conv2D(32, (4,2), input_shape=(352, 4, 1), activation='relu'))
-    model.add(Dropout(0.2))
+    #model.add(Dropout(0.2))
     model.add(Conv2D(32, (4,2), activation='relu'))
     model.add(MaxPooling2D(pool_size=(2, 1)))
     
     model.add(Conv2D(64, (8,1), activation='relu'))
-    model.add(Dropout(0.2))
+    #model.add(Dropout(0.2))
     model.add(Conv2D(64, (8,1), activation='relu'))
     model.add(MaxPooling2D(pool_size=(2, 1)))
     
     model.add(Flatten())
+    model.add(Dense(1024, activation='relu'))
     model.add(Dense(256, activation='relu'))
-    model.add(Dropout(0.5))
+    #model.add(Dropout(0.2))
     model.add(Dense(num_classes, activation='sigmoid'))
     # Compile model
     epochs = 3  # >>> should be 25+
