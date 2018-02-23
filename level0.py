@@ -29,7 +29,6 @@ def load_data_from_folder(dir):
 			print os.path.join(dir,file)
 			wav = sm.wav_read(os.path.join(dir,file))
 			wav = sm.data_slice(wav, 0, 100)
-
 			f = piano.freq(note)
 			y = np.zeros(88)
 			y[note] = 1
@@ -88,61 +87,47 @@ def load_data():
 	return (X_train, Y_train), (X_test, Y_test)
 
 
-# 4. Load pre-shuffled MNIST data into train and test sets
-(X_train, Y_train), (X_test, Y_test) = load_data_from_folder('wavs2/')
+if __name__ == "__main__":
+    #Load data into train and test sets
+    (X_train, Y_train), (X_test, Y_test) = load_data_from_folder('wavs2/')
 
-print X_train.shape
-print X_test.shape
+    #Preprocess input data
+    X_train = X_train.astype('float32')
+    X_test = X_test.astype('float32')
 
-# 5. Preprocess input data
-X_train = X_train.astype('float32')
-X_test = X_test.astype('float32')
+    X_train = np.array([abs(fft.fft(X_train[i])/882)for i in range(X_train.shape[0])])
+    X_test = np.array([abs(fft.fft(X_test[i])/882) for i in range(X_test.shape[0])])
 
-X_train = np.array([abs(fft.fft(X_train[i])/882)for i in range(X_train.shape[0])])
-X_test = np.array([abs(fft.fft(X_test[i])/882) for i in range(X_test.shape[0])])
-X_train = X_train.astype('float32')
-X_test = X_test.astype('float32')
+    scaler = preprocessing.StandardScaler().fit(X_train)
+    X_train = scaler.transform(X_train)
+    X_test = scaler.transform(X_test)
 
-scaler = preprocessing.StandardScaler().fit(X_train)
-X_train = scaler.transform(X_train)
-X_test = scaler.transform(X_test)
-print X_train[0]
+    #Define model architecture
+    model = Sequential()
+    model.add(Dense(100, activation='relu', input_dim=882))
+    model.add(Dense(88, activation='sigmoid'))
 
-# 6. Preprocess class labels
-#Y_train = np_utils.to_categorical(y_train, 88)
-#Y_test = np_utils.to_categorical(y_test, 88)
+    #Compile model
+    model.compile(optimizer='rmsprop',
+            loss='binary_crossentropy',
+            metrics=['accuracy'])
 
-print Y_train.shape
+    #Fit model on training data
+    if LOAD_WEIGHTS:
+        model.load_weights("weights")
+    else:
+        print("Training...")
+        model.fit(X_train, Y_train, batch_size=32, epochs=2, verbose=1)
 
-# 7. Define model architecture
-model = Sequential()
+    #Evaluate model on test data
+    print("Testing...")
+    preds = model.predict(X_test, verbose=1)
+    preds[preds>=0.5] = 1
+    preds[preds<0.5] = 0
+    score = np.mean([1 if np.array_equal(preds[x],Y_test[x]) else 0 for x in range(preds.shape[0])])
+    print "Test accuracy: " + str(score*100) + "%"
 
-model.add(Dense(100, activation='relu', input_dim=882))
-model.add(Dense(88, activation='sigmoid'))
-model.compile(optimizer='rmsprop',
-		loss='binary_crossentropy',
-		metrics=['accuracy'])
-
-# 8. Compile model
-#model.compile(loss='categorical_crossentropy',
-#              optimizer='adam',
-#              metrics=['accuracy'])
-
-# 9. Fit model on training data
-if LOAD_WEIGHTS:
-	model.load_weights("weights_optimal")
-else:
-	model.fit(X_train, Y_train, batch_size=32, epochs=2, verbose=1)
-
-# 10. Evaluate model on test data
-preds = model.predict(X_test, verbose=1)
-preds[preds>=0.5] = 1
-preds[preds<0.5] = 0
-print preds[0]
-score = np.mean([1 if np.array_equal(preds[x],Y_test[x]) else 0 for x in range(preds.shape[0])])
-print score*100
-
-plot_model(model, to_file='model.png', show_shapes=True, show_layer_names=True)
-if SAVE_WEIGHTS:
-	model.save_weights("weights_fft")
+    plot_model(model, to_file='model.png', show_shapes=True, show_layer_names=True)
+    if SAVE_WEIGHTS:
+        model.save_weights("weights_fft2")
 
