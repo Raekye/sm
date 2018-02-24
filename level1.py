@@ -6,7 +6,8 @@ np.random.seed(123)  # for reproducibility
 
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation, Flatten
-from keras.layers import Conv2D, MaxPooling2D
+from keras.layers import Conv2D, MaxPooling2D, BatchNormalization
+from keras.layers.advanced_activations import PReLU
 from keras.callbacks import Callback
 from keras.constraints import maxnorm
 from keras.optimizers import SGD
@@ -19,11 +20,11 @@ from numpy import fft
 import librosa
 import h5py
 import pydot
-import sm
-import piano
 
 LOAD_WEIGHTS = False
-SAVE_WEIGHTS = not LOAD_WEIGHTS
+TRAIN_WEIGHTS = True
+SAVE_WEIGHTS = True
+LEVEL = "level10"
 
 class Metrics(Callback):
     def on_epoch_end(self, batch, logs={}):
@@ -45,7 +46,7 @@ def load_data_from_folder(path):
     data = []
     target = []
     for file in os.listdir(path):
-        if 'data.npy' in file:
+        if 'grand.data.npy' in file:
             newData = np.load(os.path.join(path,file))
             newTarget = np.load(os.path.join(path,file.replace('data.npy','target.npy')))[:,0:88]
             #data = np.vstack((data, newData))
@@ -56,15 +57,17 @@ def load_data_from_folder(path):
     target = np.vstack(target)
     print(data.shape)
     print(target.shape)
-    rnd_idx = np.arange(np.shape(data)[0])
+    
+    trBatch = int(0.1*data.shape[0])
+    rnd_idx = np.arange(trBatch)
     np.random.shuffle(rnd_idx)
     
-    trBatch = int(0.8*len(rnd_idx))
-    
-    trainData = data[rnd_idx[0:trBatch]]
-    testData = data[rnd_idx[trBatch:]]
-    trainTarget = target[rnd_idx[0:trBatch]]
-    testTarget = target[rnd_idx[trBatch:]]
+    trainData = data[0:trBatch]
+    trainTarget = target[0:trBatch]
+    trainData = trainData[rnd_idx]
+    trainTarget = trainTarget[rnd_idx]
+    testData = data[trBatch:]
+    testTarget = target[trBatch:]
     print(trainData.shape)
     print(testData.shape)
     
@@ -86,22 +89,28 @@ def createCNNModel(num_classes=88):
     model = Sequential()
     
     model.add(Conv2D(32, (4,2), input_shape=(352, 4, 1), activation='relu'))
-    #model.add(Dropout(0.2))
+    model.add(BatchNormalization())
     model.add(Conv2D(32, (4,2), activation='relu'))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 1)))
+    model.add(Dropout(0.2))
     
     model.add(Conv2D(64, (8,1), activation='relu'))
-    #model.add(Dropout(0.2))
+    model.add(BatchNormalization())
     model.add(Conv2D(64, (8,1), activation='relu'))
+    model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 1)))
+    model.add(Dropout(0.2))
     
     model.add(Flatten())
-    model.add(Dense(1024, activation='relu'))
+    model.add(Dense(512, activation='relu'))
+    model.add(BatchNormalization())
+    model.add(Dropout(0.2))
     model.add(Dense(256, activation='relu'))
-    #model.add(Dropout(0.2))
+    model.add(BatchNormalization())
     model.add(Dense(num_classes, activation='sigmoid'))
     # Compile model
-    epochs = 3  # >>> should be 25+
+    epochs = 200  # >>> should be 25+
     lrate = 0.01
     decay = lrate/epochs
     model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy', 'binary_accuracy'])
@@ -129,15 +138,17 @@ if __name__ == "__main__":
     
     #Fit model on training data
     if LOAD_WEIGHTS:
-        model.load_weights("weights_level2")
-    else:
+        model.load_weights("weights_" + LEVEL)
+
+    if TRAIN_WEIGHTS:
         print("Training...")
         print(X_train.shape)
         print(Y_train.shape)
-        model.fit(X_train, Y_train, batch_size=32, validation_split=0.20, epochs=epochs, verbose=1, callbacks=[metrics])
+        model.fit(X_train, Y_train, batch_size=32, validation_data=(X_test, Y_test), epochs=epochs, verbose=2, callbacks=[metrics])
         
     if SAVE_WEIGHTS:
-        model.save_weights("weights_level2")
+        model.save_weights("weights_" + LEVEL)
+        plot_model(model, to_file='model_' + LEVEL + '.png', show_shapes=True, show_layer_names=True)
         
     count = 0
     for x in range(Y_test.shape[0]):
@@ -157,8 +168,21 @@ if __name__ == "__main__":
     print(fscore)
     print(support)
     score = np.mean([1 if np.array_equal(preds[x],Y_test[x]) else 0 for x in range(preds.shape[0])])
+    diff = preds - Y_test
+    miss_type = {}
+    avg_notes = np.count_nonzero(Y_test)/float(Y_test.shape[0])
+    for r in diff:
+        false_pos = np.count_nonzero(r == 1)
+        false_neg = np.count_nonzero(r == -1)
+        if false_pos > 0 or false_neg > 0:
+            if (false_pos,false_neg) in miss_type:
+                miss_type[(false_pos, false_neg)] += 1
+            else:
+                miss_type[(false_pos, false_neg)] = 1
+    miss_type = sorted(miss_type.items(), key=lambda x:x[1], reverse=True)
     print "Test accuracy: " + str(score*100) + "%"
+    print "Avg notes: " + str(avg_notes)
+    print miss_type
 
-    plot_model(model, to_file='model.png', show_shapes=True, show_layer_names=True)
 
 
