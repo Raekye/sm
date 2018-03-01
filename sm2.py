@@ -12,7 +12,16 @@ import sight_reading
 
 from intervaltree import IntervalTree, Interval
 
-CQT_AGGREGATE_N = 4
+CQT_AGGREGATE_N = 7
+SAMPLE_RATE = 16000
+
+def preprocess(data):
+    print("Preprocessing")
+    data = librosa.amplitude_to_db(data, ref=np.max)
+    data = data - np.amin(data)
+    data = data / np.amax(data)
+    print(data.shape)
+    return np.expand_dims(data,axis=-1)
 
 def usage():
 	print('Usage: ./sm2.py <MIDI file> <sound font names>...')
@@ -28,13 +37,13 @@ def usage():
 def load_wav(p_wav):
 	t0 = time.time()
 	print('Loading WAV {}...'.format(p_wav))
-	(wav_data, sr) = librosa.load(p_wav, sr=None)
+	(wav_data, sr) = librosa.load(p_wav, sr=SAMPLE_RATE)
 	t1 = time.time()
 	print('Loaded WAV, data {}, sample rate {} ({:.3f} s).'.format(wav_data.shape, sr, t1 - t0))
 	assert(len(wav_data.shape) == 1)
-	assert(sr == 44100)
+	assert(sr == SAMPLE_RATE)
 	print('Doing CQT...')
-	cqt_data = cqt.doCQT(wav_data, sr, False)
+	cqt_data = cqt.doCQT(wav_data, sr, inDB=False)
 	t2 = time.time()
 	print('Done CQT, samples {}, data {} ({:.3f} s).'.format(wav_data.shape[0], cqt_data.shape, t2 - t1))
 	assert(cqt_data.shape[0] == 352)
@@ -47,8 +56,13 @@ def load_wav(p_wav):
 '''
 def load_midi(p):
 	t0 = time.time()
-	print('Parsing MIDI...')
-	(s1, s2) = sight_reading.process_parse_midi(p)
+	txt = p[:-3] + 'txt'
+	if os.path.isfile(txt):
+		print("Founding txt version, parsing {}...".format(txt))
+		(s1, s2) = sight_reading.process_parse_txt(txt)
+	else:
+		print('Parsing MIDI...')
+		(s1, s2) = sight_reading.process_parse_midi(p)
 	assert(len(s1) == 88)
 	t1 = time.time()
 	print('Loaded MIDI ({:.3f} s).'.format(t1 - t0))
@@ -66,9 +80,8 @@ def load_midi(p):
 - heuristic function to check if note overlaps segment
 '''
 def predicate_note_overlaps(a, b, x, y):
-	lower = max(a, x)
-	upper = min(b, y)
-	return 2 * (upper - lower) / (b - a) >= 1
+	mid = (b + a) / 2
+	return (x < mid and y > mid)
 
 '''
 Note: xs and ys note really named appropriately
@@ -128,7 +141,8 @@ def process(p, sfs):
 
 	for sf in sfs:
 		p_wav = '{}.{}.wav'.format(p_base, sf)
-		assert(os.path.isfile(p_wav))
+		if not os.path.isfile(p_wav):
+			continue
 		(cqt_data, sr, n_samples) = load_wav(p_wav)
 		t2 = time.time()
 		print('WAV took {:.3f} s.'.format(t2 - t1))
@@ -136,9 +150,10 @@ def process(p, sfs):
 		(xs, ys) = process_iterate(cqt_data, sr, n_samples, midi_it, CQT_AGGREGATE_N)
 		t3 = time.time()
 		print('Processing took {:.3f} s.'.format(t3 - t2))
-		f_data = '{}.{}.data.npy'.format(p_base, sf)
+		f_data = '{}.{}.data.preprocessed.npy'.format(p_base, sf)
 		f_target = '{}.{}.target.npy'.format(p_base, sf)
 		print('Saving to {}, {}...'.format(f_data, f_target))
+		ys = preprocess(ys)
 		np.save(f_data, ys)
 		np.save(f_target, xs)
 		t4 = time.time()

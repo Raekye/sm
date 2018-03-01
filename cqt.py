@@ -41,7 +41,7 @@ if __name__ == "__main__":
     CQT_db = doCQT(y, sr, inDB=True)
     print(np.amax(CQT_db))
     print(np.amin(CQT_db))
-    print CQT_db.shape
+    print(CQT_db.shape)
     print("Plotting")
     librosa.display.specshow(CQT_db, sr=sr,x_axis='time', y_axis='cqt_hz', bins_per_octave=12*BINS_PER_NOTE)
     plt.colorbar(format='%+2.0f dB')
