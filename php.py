@@ -13,7 +13,8 @@ import sm2
 import cqt
 
 TICKS_PER_BEAT = 480
-MIDI_TEMPO = 120
+MIDI_BPM = 120
+MIDI_TEMPO = mido.bpm2tempo(MIDI_BPM)
 MIDI_PROGRAM_PIANO = 1
 
 def midi_create():

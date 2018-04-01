@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
-SFS=(grand kawai fazioli-grand giga motif-es6-concert timbres_of_heaven timgm6mb)
+#SFS=(grand kawai fazioli-grand giga motif-es6-concert timbres_of_heaven timgm6mb)
+SFS=(grand)
 
 if [ -z "$1" ]; then
 	echo 'Usage: synth.sh <MIDI file>'

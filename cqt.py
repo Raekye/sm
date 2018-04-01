@@ -9,8 +9,8 @@ except:
 
 import librosa
 import librosa.display
+import librosa.feature
 import matplotlib.pyplot as plt
-import sm
 import numpy as np
 
 BINS_PER_NOTE = 4
@@ -33,16 +33,20 @@ if __name__ == "__main__":
     file_name = sys.argv[1]
     print("Loading " + file_name)
     y, sr = librosa.load(file_name, sr=None)
+    y2, sr2 = librosa.load(file_name, sr=16000)
     print('{} hs'.format(sr))
 
     print(y.shape)
 
     print("Calculating Constant-Q transform") 
     CQT_db = doCQT(y, sr, inDB=True)
+    CQT_db2 = doCQT(y2, sr2, inDB=True)
     print(np.amax(CQT_db))
     print(np.amin(CQT_db))
     print(CQT_db.shape)
     print("Plotting")
+    plt.subplot(211)
     librosa.display.specshow(CQT_db, sr=sr,x_axis='time', y_axis='cqt_hz', bins_per_octave=12*BINS_PER_NOTE)
-    plt.colorbar(format='%+2.0f dB')
-    plt.show()
+    plt.subplot(212)
+    librosa.display.specshow(CQT_db2, sr=sr2,x_axis='time', y_axis='cqt_hz', bins_per_octave=12*BINS_PER_NOTE)
+    #plt.show()
