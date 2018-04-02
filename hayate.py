@@ -11,26 +11,81 @@ from flask import render_template
 from flask import redirect
 from flask import url_for
 from flask import flash
+from flask import send_from_directory
 
 import werkzeug.utils
 
+from celery import Celery
+
 import youtube_dl as ytdl
+
+import level1
+
+def make_celery(app):
+	celery = Celery(app.import_name, backend=app.config['CELERY_RESULT_BACKEND'], broker=app.config['CELERY_BROKER_URL'])
+	celery.conf.update(app.config)
+	TaskBase = celery.Task
+	class ContextTask(TaskBase):
+		abstract = True
+		def __call__(self, *args, **kwargs):
+			with app.app_context():
+				return TaskBase.__call__(self, *args, **kwargs)
+	celery.Task = ContextTask
+	return celery
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = './uploads/'
 app.secret_key = 'OMEGALUL'
+app.config.update(
+	CELERY_BROKER_URL='redis://localhost:6379',
+	CELERY_RESULT_BACKEND='redis://localhost:6379'
+)
+celery = make_celery(app)
+
+@celery.task()
+def transcribe_youtube(url, x):
+	transcription_status_update(x, 'downloading')
+	ret = youtube_dl(url, x)
+	if not ret:
+		transcription_status_update(x, 'error')
+		return
+	transcription_status_update(x, 'transcribing')
+	midi_transcribe(x)
+	transcription_status_update(x, 'done')
+
+@celery.task()
+def transcribe_file(p, x):
+	transcription_status_update(x, 'loading')
+	ret = wave_convert(p, x)
+	transcription_status_update(x, 'transcribing')
+	midi_transcribe(x)
+	transcription_status_update(x, 'done')
+
+def file_path(x, ext):
+	return os.path.join(app.config['UPLOAD_FOLDER'], str(x) + '.' + ext)
+
+def transcription_status_update(x, status):
+	with open(file_path(x, 'txt'), 'w') as f:
+		f.write(status)
+
+def transcription_status(x):
+	try:
+		with open(file_path(x, 'txt')) as f:
+			return f.readline()
+	except OSError:
+		pass
+	return None
 
 def midi_transcribe(x):
-	p = os.path.join(app.config['UPLOAD_FOLDER'], str(x) + '.wav')
+	p = file_path(x, 'wav')
+	level1.predict(p)
 
 def youtube_dl_hook(d):
-	print('foo')
 	print(d)
 
-def youtube_dl(url):
-	x = uuid.uuid4()
+def youtube_dl(url, x):
 	opts = {
-		'outtmpl': os.path.join(app.config['UPLOAD_FOLDER'], str(x) + '.%(ext)s'),
+		'outtmpl': file_path(x, '') + '%(ext)s',
 		'format': 'bestaudio/best',
 		'postprocessors': [{
 			'key': 'FFmpegExtractAudio',
@@ -41,11 +96,11 @@ def youtube_dl(url):
 	with ytdl.YoutubeDL(opts) as yt:
 		ret = yt.download([ url ])
 		if ret == 0:
-			return x
-	return None
+			return True
+	return False
 
 def wave_convert(f, x):
-	dst = os.path.join(app.config['UPLOAD_FOLDER'], str(x) + '.wav')
+	dst = file_path(x, 'wav')
 	cmd = [
 		'ffmpeg',
 		'-y',
@@ -54,12 +109,12 @@ def wave_convert(f, x):
 	]
 	p = subprocess.Popen(cmd)
 	try:
-		p.wait(4)
+		p.wait(64)
 	except subprocess.TimeoutExpired:
-		return None
+		return False
 	if p.returncode != 0:
-		return None
-	return dst
+		return False
+	return True
 
 @app.route('/')
 def index():
@@ -79,25 +134,41 @@ def upload():
 		p = werkzeug.utils.secure_filename(f.filename)
 		ext = 'dat' if (len(p) < 3) else p[-3:]
 		x = uuid.uuid4()
-		p = os.path.join(app.config['UPLOAD_FOLDER'], str(x) + '.' + ext)
+		p = file_path(x, ext)
 		f.save(p)
-		wav = wave_convert(p, x)
-		if not (wav is None):
-			midi = midi_transcribe(x)
-			return redirect(url_for('download', x=str(x)))
+		transcribe_file.delay(p, x)
+		transcription_status_update(x, 'queued')
+		return redirect(url_for('download', x=str(x)))
 	elif ('url' in request.form) and len(request.form['url'].strip()) > 0:
-		yt_url = request.form['url']
-		x = youtube_dl(yt_url)
-		if not (x is None):
-			midi = midi_transcribe(x)
-			return redirect(url_for('download', x=str(x)))
+		url = request.form['url']
+		x = uuid.uuid4()
+		transcribe_youtube.delay(url, x)
+		transcription_status_update(x, 'queued')
+		return redirect(url_for('download', x=str(x)))
 
 	flash('Invalid request.')
 	return redirect(url_for('index'))
 
 @app.route('/download/<x>/')
 def download(x):
-	return render_template('download.html', x=x)
+	status = transcription_status(x)
+	return render_template('download.html', x=x, status=status)
+
+@app.route('/download/<x>/midi')
+def download_midi(x):
+	p = file_path(x, 'mid')
+	if os.path.isfile(p):
+		return send_from_directory('.', p, as_attachment=True)
+	flash('Invalid request.')
+	return redirect(url_for('index'))
+
+@app.route('/download/<x>/wav')
+def download_wav(x):
+	p = file_path(x, 'grand.wav')
+	if os.path.isfile(p):
+		return send_from_directory('.', p, as_attachment=True)
+	flash('Invalid request.')
+	return redirect(url_for('index'))
 
 def main(args):
 	print('hmmm')

@@ -19,7 +19,6 @@ from sklearn import preprocessing
 from sklearn.metrics import precision_recall_fscore_support
 from random import shuffle
 from numpy import fft
-from datagen import DataGenerator
 from subprocess import call
 import librosa
 import h5py
@@ -32,7 +31,7 @@ import php
 LOAD_WEIGHTS = True
 TRAIN_WEIGHTS = False
 SAVE_WEIGHTS = False
-LOAD_LEVEL = "level34"
+LOAD_LEVEL = "level33"
 SAVE_LEVEL = "level34"
 
 class Metrics(Callback):
@@ -137,7 +136,7 @@ def createCNNModel(num_classes=88):
     return model
 
 def preprocess(data_path):
-    (data, onsets, sr, n_samples) = sm2.load_wav(data_path)
+    (data, sr, n_samples) = sm2.load_wav(data_path)
     n = sm2.CQT_AGGREGATE_N
     b = data.shape[0]
     m = data.shape[1] - n + 1
@@ -145,8 +144,9 @@ def preprocess(data_path):
     for i in range(m):
         ys[i] = np.absolute(data[:,i:i+n])
     data =sm2.preprocess(ys)
-    return (data, onsets)
-    
+    #return (data, onsets)
+    return data
+
 
 def predict(data_path):
     output_name = data_path.replace('.wav', '')
@@ -154,15 +154,15 @@ def predict(data_path):
     if output_name+'.npy' in os.listdir('.'):
         print("Found existing prediction")
         predict = np.load(output_name+'.npy')
-        onsets = np.load(output_name+'.onsets.npy')
+        #onsets = np.load(output_name+'.onsets.npy')
     else:
-        input_data, onsets = preprocess(data_path)
+        input_data = preprocess(data_path)
         
         model = createCNNModel(88)
         model.load_weights("weights_" + LOAD_LEVEL)
         predict = model.predict(input_data, verbose=1)
         np.save(output_name, predict)
-        np.save(output_name + '.onsets', onsets)
+        #np.save(output_name + '.onsets', onsets)
         
     '''
     top = np.argsort(predict, axis=1)
@@ -171,8 +171,8 @@ def predict(data_path):
             predict[i,top[i,j]] = 0
         
     '''
-    predict[predict>=0.90] = 1
-    predict[predict<0.90] = 0
+    predict[predict>=0.15] = 1
+    predict[predict<0.15] = 0
     
     mid = php.process(predict, sm2.SAMPLE_RATE, cqt.HOP_LENGTH, sm2.CQT_AGGREGATE_N, 3)
     mid.save(output_name + '.mid')
