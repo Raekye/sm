@@ -71,7 +71,7 @@ def transcription_status_update(x, status):
 def transcription_status(x):
 	try:
 		with open(file_path(x, 'txt')) as f:
-			return f.readline()
+			return f.readline().strip()
 	except OSError:
 		pass
 	return None
