@@ -1,0 +1,38 @@
+{% extends "_base.html" %}
+{% block content %}
+<div class="container">
+	<div id="ear-automata" class="row">
+		<div class="col text-center">
+			<img src="/static/nier.jpg" />
+		</div>
+	</div>
+	<br />
+	<br />
+	<br />
+	<form action="{{ url_for('upload') }}" method="POST" enctype="multipart/form-data">
+		<div class="row">
+			<div class="col-5 offset-1">
+				<h2>Upload File</h2>
+				<div class="form=group">
+					<label for="wav">File</label>
+					<input type="file" class="form-control" id="wav" name="wav" />
+				</div>
+			</div>
+			<div class="col-5">
+				<h2>Youtube URL</h2>
+				<div class="form=group">
+					<label for="url">URL</label>
+					<input type="text" class="form-control" id="url" name="url" />
+				</div>
+			</div>
+		</div>
+		<br />
+		<br />
+		<div class="row">
+			<div class="col text-center">
+				<button type="submit" class="btn btn-dark">Transcribe</button>
+			</div>
+		</div>
+	</form>
+</div>
+{% endblock %}

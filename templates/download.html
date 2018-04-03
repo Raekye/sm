@@ -1,0 +1,29 @@
+{% extends "_base.html" %}
+{% block head %}
+	{% if (status != None) and (status != "done") %}
+		<meta http-equiv="refresh" content="4" />
+	{% endif %}
+{% endblock %}
+{% block content %}
+<div class="container">
+	<div class="row">
+		<div class="col">
+			<h1>Download</h1>
+			<div>
+				{% if status == None %}
+					Invalid file.
+				{% elif status == "done" %}
+					<ul>
+						<li><a href="{{ url_for('download_midi', x=x) }}">MIDI transcription</a></li>
+						<li><a href="{{ url_for('download_wav', x=x) }}">Synthesized WAV</a></li>
+					</ul>
+				{% else %}
+					<p>
+						Status: {{ status }}
+					</p>
+				{% endif %}
+			</div>
+		</div>
+	</div>
+</div>
+{% endblock %}
