@@ -4,6 +4,7 @@ import sys
 import os
 import subprocess
 import uuid
+import shutil
 
 from flask import Flask
 from flask import request
@@ -19,7 +20,8 @@ from celery import Celery
 
 import youtube_dl as ytdl
 
-import level1
+if os.environ.get('foo') == 'bar':
+	import level1
 
 def make_celery(app):
 	celery = Celery(app.import_name, backend=app.config['CELERY_RESULT_BACKEND'], broker=app.config['CELERY_BROKER_URL'])
@@ -37,8 +39,10 @@ app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = './uploads/'
 app.secret_key = 'OMEGALUL'
 app.config.update(
-	CELERY_BROKER_URL='redis://localhost:6379',
-	CELERY_RESULT_BACKEND='redis://localhost:6379'
+#	CELERY_BROKER_URL='redis://192.168.56.1:6379',
+#	CELERY_RESULT_BACKEND='redis://192.168.56.1:6379'
+	CELERY_BROKER_URL='redis://127.0.0.1:6379',
+	CELERY_RESULT_BACKEND='redis://127.0.0.1:6379'
 )
 celery = make_celery(app)
 
@@ -100,11 +104,13 @@ def youtube_dl(url, x):
 	return False
 
 def wave_convert(f, x):
+	tmp = f[:-3] + 'tmp.' + f[-3:]
+	shutil.copyfile(f, tmp)
 	dst = file_path(x, 'wav')
 	cmd = [
 		'ffmpeg',
 		'-y',
-		'-i', f,
+		'-i', tmp,
 		dst,
 	]
 	p = subprocess.Popen(cmd)
@@ -126,7 +132,13 @@ def about():
 
 @app.route('/upload/', methods=[ 'POST' ])
 def upload():
-	if ('wav' in request.files):
+	if ('url' in request.form) and len(request.form['url'].strip()) > 0:
+		url = request.form['url']
+		x = uuid.uuid4()
+		transcribe_youtube.delay(url, x)
+		transcription_status_update(x, 'queued')
+		return redirect(url_for('download', x=str(x)))
+	elif ('wav' in request.files):
 		f = request.files['wav']
 		if f.filename == '':
 			flash('No selected file.')
@@ -137,12 +149,6 @@ def upload():
 		p = file_path(x, ext)
 		f.save(p)
 		transcribe_file.delay(p, x)
-		transcription_status_update(x, 'queued')
-		return redirect(url_for('download', x=str(x)))
-	elif ('url' in request.form) and len(request.form['url'].strip()) > 0:
-		url = request.form['url']
-		x = uuid.uuid4()
-		transcribe_youtube.delay(url, x)
 		transcription_status_update(x, 'queued')
 		return redirect(url_for('download', x=str(x)))
 
