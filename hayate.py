@@ -5,6 +5,7 @@ import os
 import subprocess
 import uuid
 import shutil
+from collections import deque
 
 from flask import Flask
 from flask import request
@@ -22,6 +23,8 @@ import youtube_dl as ytdl
 
 if os.environ.get('foo') == 'bar':
 	import level1
+
+history = deque()
 
 def make_celery(app):
 	celery = Celery(app.import_name, backend=app.config['CELERY_RESULT_BACKEND'], broker=app.config['CELERY_BROKER_URL'])
@@ -48,22 +51,33 @@ celery = make_celery(app)
 
 @celery.task()
 def transcribe_youtube(url, x):
-	transcription_status_update(x, 'downloading')
-	ret = youtube_dl(url, x)
-	if not ret:
+	try:
+		transcription_status_update(x, 'downloading')
+		ret = youtube_dl(url, x)
+		if not ret:
+			transcription_status_update(x, 'error')
+			return
+		transcription_status_update(x, 'transcribing')
+		midi_transcribe(x)
+		history.append(x)
+		if len(history) > 8:
+			history.popleft()
+		transcription_status_update(x, 'done')
+	except Exception as e:
 		transcription_status_update(x, 'error')
-		return
-	transcription_status_update(x, 'transcribing')
-	midi_transcribe(x)
-	transcription_status_update(x, 'done')
+		raise e
 
 @celery.task()
 def transcribe_file(p, x):
-	transcription_status_update(x, 'loading')
-	ret = wave_convert(p, x)
-	transcription_status_update(x, 'transcribing')
-	midi_transcribe(x)
-	transcription_status_update(x, 'done')
+	try:
+		transcription_status_update(x, 'loading')
+		ret = wave_convert(p, x)
+		transcription_status_update(x, 'transcribing')
+		midi_transcribe(x)
+		transcription_status_update(x, 'done')
+	except Exception as e:
+		transcription_status_update(x, 'error')
+		raise e
 
 def file_path(x, ext):
 	return os.path.join(app.config['UPLOAD_FOLDER'], str(x) + '.' + ext)
@@ -80,25 +94,45 @@ def transcription_status(x):
 		pass
 	return None
 
+def youtube_write_title(x, title):
+	with open(file_path(x, 'youtube.txt'), 'w') as f:
+		f.write(title)
+
+def youtube_title(x):
+	try:
+		with open(file_path(x, 'youtube.txt')) as f:
+			return f.readline().strip()
+	except OSError:
+		pass
+	return None
+
 def midi_transcribe(x):
 	p = file_path(x, 'wav')
 	level1.predict(p)
 
-def youtube_dl_hook(d):
-	print(d)
+def youtube_dl_hook(x, d):
+	d['percent'] = x.get('_percent_str')
+	d['filename'] = x.get('filename')
 
 def youtube_dl(url, x):
+	data = {}
 	opts = {
-		'outtmpl': file_path(x, '') + '%(ext)s',
+		'outtmpl': file_path('%(title)s', '%(ext)s'),
 		'format': 'bestaudio/best',
 		'postprocessors': [{
 			'key': 'FFmpegExtractAudio',
 			'preferredcodec': 'wav',
 		}],
-		'progress_hooks': [ youtube_dl_hook ],
+		'progress_hooks': [ lambda x: youtube_dl_hook(x, data) ],
 	}
 	with ytdl.YoutubeDL(opts) as yt:
 		ret = yt.download([ url ])
+		s = data['filename']
+		pos = s.rindex('.')
+		title = s[s.rindex('/') + 1:pos]
+		p = s[:pos] + '.wav'
+		youtube_write_title(x, title)
+		shutil.move(p, file_path(x, 'wav'))
 		if ret == 0:
 			return True
 	return False
@@ -158,7 +192,9 @@ def upload():
 @app.route('/download/<x>/')
 def download(x):
 	status = transcription_status(x)
-	return render_template('download.html', x=x, status=status)
+	title = youtube_title(x)
+	return render_template('download.html', x=x, status=status, file_title='' if title is None else title
+		, history=list(map(lambda x: (x, youutbe_title(x), history))))
 
 @app.route('/download/<x>/midi')
 def download_midi(x):
@@ -178,9 +214,8 @@ def download_wav(x):
 
 def main(args):
 	print('hmmm')
-	wav = youtube_dl('https://www.youtube.com/watch?v=ibJhcheHdyE')
+	wav = youtube_dl('https://www.youtube.com/watch?v=ibJhcheHdyE', 'foo')
 	print(wav)
-	midi = midi_transcribe(wav)
 
 if __name__ == '__main__':
 	main(sys.argv[1:])

@@ -34,5 +34,17 @@
 			</div>
 		</div>
 	</form>
+	<br />
+	<br />
+	<div class="row">
+		<div class="col-10 offset-1">
+			<h2>Recent Transcriptions</h2>
+			<ul>
+				{% for x in history %}
+					<li><a href="{{ url_for('download', x=x[0]) }}">{{ x[1] }}</a></li>
+				{% endfor %}
+			</ul>
+		</div>
+	</div>
 </div>
 {% endblock %}

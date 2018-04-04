@@ -8,14 +8,13 @@
 <div class="container">
 	<div class="row">
 		<div class="col">
-			<h1>Download</h1>
+			<h1>Download {{ file_title }}</h1>
 			<div>
 				{% if status == None %}
 					Invalid file.
 				{% elif status == "done" %}
 					<ul>
 						<li><a href="{{ url_for('download_midi', x=x) }}">MIDI transcription</a></li>
-						<li><a href="{{ url_for('download_wav', x=x) }}">Synthesized WAV</a></li>
 					</ul>
 				{% else %}
 					<p>

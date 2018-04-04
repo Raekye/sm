@@ -6,6 +6,9 @@ Hmmm.
 - redis
 
 ### Python
-- youtube-dl
+- keras
+- tensorflow/tensorflow-gpu
 - flask
 - celery
+- redis
+- youtube-dl
